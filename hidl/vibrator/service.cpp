@@ -1,29 +1,42 @@
 /*
- * Copyright (C) 2019 The Android Open Source Project
- * Copyright (C) 2023 The LineageOS Project
+ * Copyright (C) 2018 The Android Open Source Project
  *
- * SPDX-License-Identifier: Apache-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+#define LOG_TAG "android.hardware.vibrator@1.2-service.lge"
+
+#include <android/hardware/vibrator/1.2/IVibrator.h>
+#include <hidl/HidlSupport.h>
+#include <hidl/HidlTransportSupport.h>
+#include <utils/Errors.h>
+#include <utils/StrongPointer.h>
 
 #include "Vibrator.h"
+#include "tspdrv.h"
 
-#include <android-base/logging.h>
-#include <android/binder_manager.h>
-#include <android/binder_process.h>
+using android::hardware::configureRpcThreadpool;
+using android::hardware::joinRpcThreadpool;
+using android::hardware::vibrator::V1_3::IVibrator;
+using android::hardware::vibrator::V1_3::implementation::Vibrator;
+using namespace android;
 
-#include <fcntl.h>
-#include <vector>
-#include <linux/tspdrv.h>
+status_t registerVibratorService() {
 
-using aidl::android::hardware::vibrator::Vibrator;
-
-int registerVibratorService(std::vector<int>& initializeArgs) {
-
-    // Open device file as read/write for ioctl and write
+    // Open device file as read/write for ioctl and write 
     int file_desc = open(TSPDRV, O_RDWR);
     if(file_desc < 0)
     {
-        LOG(ERROR) << "Failed to open device file: " << TSPDRV;
+        ALOGE("Failed to open device file: %s", TSPDRV);
         return -1;
     }
 
@@ -40,15 +53,15 @@ int registerVibratorService(std::vector<int>& initializeArgs) {
     int ret = ioctl(file_desc, TSPDRV_SET_MAGIC_NUMBER, TSPDRV_MAGIC_NUMBER);
     if(ret != 0)
     {
-        LOG(ERROR) << "Failed to set magic number";
+        ALOGE("Failed to set magic number");
         return -ret;
     }
-
+    
     // Set default device parameter 1
     ret = ioctl(file_desc, TSPDRV_SET_DEVICE_PARAMETER, &dev_param1);
     if(ret != 0)
     {
-        LOG(ERROR) << "Failed to set device parameter 1";
+        ALOGE("Failed to set device parameter 1");
         return -ret;
     }
 
@@ -56,7 +69,7 @@ int registerVibratorService(std::vector<int>& initializeArgs) {
     ret = ioctl(file_desc, TSPDRV_SET_DEVICE_PARAMETER, &dev_param2);
     if(ret != 0)
     {
-        LOG(ERROR) << "Failed to set device parameter 2";
+        ALOGE("Failed to set device parameter 2");
         return -ret;
     }
 
@@ -64,7 +77,7 @@ int registerVibratorService(std::vector<int>& initializeArgs) {
     ret = ioctl(file_desc, TSPDRV_SET_DEVICE_PARAMETER, &dev_param3);
     if(ret != 0)
     {
-        LOG(ERROR) << "Failed to set device parameter 3";
+        ALOGE("Failed to set device parameter 3");
         return -ret;
     }
 
@@ -72,7 +85,7 @@ int registerVibratorService(std::vector<int>& initializeArgs) {
     ret = ioctl(file_desc, TSPDRV_SET_DEVICE_PARAMETER, &dev_param4);
     if(ret != 0)
     {
-        LOG(ERROR) << "Failed to set device parameter 4";
+        ALOGE("Failed to set device parameter 4");
         return -ret;
     }
 
@@ -80,7 +93,7 @@ int registerVibratorService(std::vector<int>& initializeArgs) {
     ret = ioctl(file_desc, TSPDRV_SET_DEVICE_PARAMETER, &dev_param5);
     if(ret != 0)
     {
-        LOG(ERROR) << "Failed to set device parameter 5";
+        ALOGE("Failed to set device parameter 5");
         return -ret;
     }
 
@@ -88,7 +101,7 @@ int registerVibratorService(std::vector<int>& initializeArgs) {
     ret = ioctl(file_desc, TSPDRV_SET_DEVICE_PARAMETER, &dev_param6);
     if(ret != 0)
     {
-        LOG(ERROR) << "Failed to set device parameter 6";
+        ALOGE("Failed to set device parameter 6");
         return -ret;
     }
 
@@ -96,7 +109,7 @@ int registerVibratorService(std::vector<int>& initializeArgs) {
     ret = ioctl(file_desc, TSPDRV_SET_DEVICE_PARAMETER, &dev_param_update_rate);
     if(ret != 0)
     {
-        LOG(ERROR) << "Failed to set device parameter update rate";
+        ALOGE("Failed to set device parameter update rate");
         return -ret;
     }
 
@@ -104,29 +117,22 @@ int registerVibratorService(std::vector<int>& initializeArgs) {
     ret = ioctl(file_desc, TSPDRV_GET_NUM_ACTUATORS, 0);
     if(ret == 0)
     {
-        LOG(ERROR) << "No actuators found!";
+        ALOGE("No actuators found!");
         return -2;
     }
 
-    initializeArgs.push_back(file_desc);
-    initializeArgs.push_back(ret);
+    sp<IVibrator> vibrator = new Vibrator(file_desc, ret);
 
-    return 0;
+    return vibrator->registerAsService();
 }
 
 int main() {
-    ABinderProcess_setThreadPoolMaxThreadCount(0);
+    configureRpcThreadpool(1, true);
+    status_t status = registerVibratorService();
 
-    std::vector<int> args;
-    int ret = registerVibratorService(args);
-    if(ret != 0)
-        return EXIT_FAILURE;
+    if (status != OK) {
+        return status;
+    }
 
-    std::shared_ptr<Vibrator> vibrator = ndk::SharedRefBase::make<Vibrator>(args.at(0), args.at(1));
-    const std::string vibName = std::string() + Vibrator::descriptor + "/default";
-    binder_status_t status = AServiceManager_addService(vibrator->asBinder().get(), vibName.c_str());
-    CHECK_EQ(status, STATUS_OK);
-
-    ABinderProcess_joinThreadPool();
-    return EXIT_FAILURE;  // should not reach
+    joinRpcThreadpool();
 }
