@@ -1,5 +1,7 @@
 package org.lineageos.settings.device.dac.utils;
 
+import org.lineageos.hardware.util.FileUtils;
+
 import android.media.AudioSystem;
 import android.os.RemoteException;
 import android.os.SystemProperties;
